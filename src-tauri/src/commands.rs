@@ -10,7 +10,7 @@ use crate::error::{AppError, Result};
 use crate::store;
 
 /// Payload for the `conn://status` event: connection id + flattened state.
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct StatusEvent<'a> {
     id: &'a str,
     #[serde(flatten)]
@@ -18,7 +18,12 @@ struct StatusEvent<'a> {
 }
 
 fn emit_status(app: &AppHandle, id: &str, state: &ConnState) {
-    let _ = app.emit("conn://status", StatusEvent { id, state });
+    if let Err(e) = app.emit("conn://status", StatusEvent { id, state }) {
+        // A dropped status event leaves the UI banner stale — which is exactly
+        // the silent-failure mode we're trying to avoid. Surface it rather than
+        // swallowing it.
+        eprintln!("dbx: failed to emit conn://status for {id}: {e}");
+    }
 }
 
 /// Dry-run a config (no persistence, no registration). Powers "Test connection".
@@ -39,8 +44,11 @@ pub async fn connect(
 ) -> Result<ConnState> {
     let state = mgr.connect(config.clone(), &password).await?;
     if save {
-        store::save_config(&app, &config)?;
+        // Password to the keychain first; only persist the config once the secret
+        // is safely stored, so we never leave a saved config whose password
+        // `connect_saved` can't find.
         store::save_password(&config.id, &password)?;
+        store::save_config(&app, &config)?;
     }
     emit_status(&app, &config.id, &state);
     Ok(state)

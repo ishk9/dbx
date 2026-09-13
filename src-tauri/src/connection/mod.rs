@@ -25,13 +25,24 @@ use serde::Serialize;
 
 use crate::error::{AppError, Result};
 
+/// One reconnect attempt waits this long before retrying a dropped pool.
+/// ponytail: single retry, no backoff; add exponential backoff + jitter if
+/// users report flaky links.
+const RECONNECT_DELAY: Duration = Duration::from_millis(250);
+
+/// Prove a freshly-built pool works: acquire a client and round-trip. Shared by
+/// `test_connection` and `connect` so the liveness check lives in one place.
+async fn prove_pool(pool: &Pool) -> Result<()> {
+    let client = pool.get().await?;
+    client.query_one("SELECT 1", &[]).await?;
+    Ok(())
+}
+
 /// Prove a config works without registering it — backs the wizard's
 /// "Test connection" button. Builds a throwaway pool, round-trips, drops it.
 pub async fn test_connection(config: &ConnConfig, password: &str) -> Result<()> {
-    let p = pool::build_pool(config, password)?;
-    let client = p.get().await?;
-    client.query_one("SELECT 1", &[]).await?;
-    Ok(())
+    let pool = pool::build_pool(config, password)?;
+    prove_pool(&pool).await
 }
 
 /// The states a server connection moves through. Serialized to the frontend so
@@ -71,21 +82,25 @@ impl ConnectionManager {
         let pool = pool::build_pool(&config, password)?;
 
         // Prove the credentials/host actually work before we call it Connected,
-        // so the wizard's "Test connection" gives a truthful result.
-        let client = pool.get().await?;
-        client.query_one("SELECT 1", &[]).await?;
-        drop(client); // back to the pool immediately
+        // so the wizard gives a truthful result.
+        prove_pool(&pool).await?;
 
         let id = config.id.clone();
         let mut conns = self.conns.lock().unwrap();
-        conns.insert(
+        // Replacing a live connection (reconnect, or concurrent connect for the
+        // same id)? Close the pool we just evicted — a deadpool `Pool` is an Arc,
+        // so dropping the map entry alone would leave its idle backends open.
+        // This is exactly the leak class this module exists to prevent.
+        if let Some(old) = conns.insert(
             id,
             Connection {
                 config,
                 pool,
                 state: ConnState::Connected,
             },
-        );
+        ) {
+            old.pool.close();
+        }
         Ok(ConnState::Connected)
     }
 
@@ -106,11 +121,17 @@ impl ConnectionManager {
             Err(first) => {
                 // One silent-reconnect attempt before surfacing the loss.
                 self.set_state(id, ConnState::Reconnecting);
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                tokio::time::sleep(RECONNECT_DELAY).await;
                 match pool.get().await {
                     Ok(client) => {
                         self.set_state(id, ConnState::Connected);
                         Ok(client)
+                    }
+                    Err(_) if pool.is_closed() => {
+                        // `disconnect` raced this call and tore the pool down on
+                        // purpose — that's not a lost connection, so don't flip
+                        // the UI to a scary "connection failed".
+                        Err(AppError::UnknownConnection(id.to_string()))
                     }
                     Err(_) => {
                         let msg = first.to_string();
@@ -185,16 +206,22 @@ mod tests {
         let parts: Vec<&str> = spec.split(',').collect();
         assert_eq!(parts.len(), 5, "DBX_TEST_PG_URL must be host,port,user,password,dbname");
 
+        let host = parts[0];
+        let port: u16 = parts[1].parse().unwrap();
+        let user = parts[2];
+        let password = parts[3];
+        let dbname = parts[4];
+
+        // The connection under test uses name "test" → application_name "dbx test".
         let config = ConnConfig {
             id: "test".into(),
             name: "test".into(),
-            host: parts[0].into(),
-            port: parts[1].parse().unwrap(),
-            user: parts[2].into(),
-            dbname: parts[4].into(),
+            host: host.into(),
+            port,
+            user: user.into(),
+            dbname: dbname.into(),
             ssl_mode: SslMode::Disable,
         };
-        let password = parts[3];
 
         let mgr = ConnectionManager::new();
 
@@ -202,33 +229,41 @@ mod tests {
         let state = mgr.connect(config.clone(), password).await.unwrap();
         assert_eq!(state, ConnState::Connected);
 
-        // Count our own backends before and after teardown to prove no leak.
-        let backends_query =
-            "SELECT count(*)::int FROM pg_stat_activity WHERE application_name = 'dbx'";
+        // Count backends belonging *specifically* to this connection. Using its
+        // unique application_name (not the shared "dbx" prefix) is what makes the
+        // leak assertion rigorous — a separate probe connection can't inflate it.
+        let under_test =
+            "SELECT count(*)::int FROM pg_stat_activity WHERE application_name = 'dbx test'";
 
         // Acquire a couple of clients (like opening tabs) then drop them.
         {
             let c1 = mgr.client("test").await.unwrap();
             let c2 = mgr.client("test").await.unwrap();
-            let n: i32 = c1.query_one(backends_query, &[]).await.unwrap().get(0);
-            assert!(n >= 1, "expected at least one dbx backend while connected");
+            let n: i32 = c1.query_one(under_test, &[]).await.unwrap().get(0);
+            assert!(n >= 1, "expected at least one 'dbx test' backend while connected");
             drop(c1);
             drop(c2);
         }
 
-        // Teardown closes the pool → backends go away.
+        // Teardown closes the pool → its backends must go away.
         mgr.disconnect("test").unwrap();
         assert!(mgr.state("test").is_none(), "connection should be gone after disconnect");
 
-        // Fresh short-lived connection just to read the post-teardown count.
+        // A *separate* connection (application_name "dbx probe") reads the count —
+        // its own backends are excluded by the WHERE clause, so any non-zero result
+        // is a genuine leak from the torn-down pool.
+        let probe_config = ConnConfig {
+            id: "probe".into(),
+            name: "probe".into(),
+            ..config
+        };
         let mgr2 = ConnectionManager::new();
-        mgr2.connect(config, password).await.unwrap();
-        let probe = mgr2.client("test").await.unwrap();
-        // Give the closed pool's backends a moment to actually terminate.
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let after: i32 = probe.query_one(backends_query, &[]).await.unwrap().get(0);
-        // Only mgr2's own backend(s) should remain; the torn-down pool leaked none.
-        assert!(after <= 2, "torn-down pool leaked backends: {after} still open");
-        mgr2.disconnect("test").unwrap();
+        mgr2.connect(probe_config, password).await.unwrap();
+        let probe = mgr2.client("probe").await.unwrap();
+        // Give the closed pool's backends a moment to actually terminate server-side.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let leaked: i32 = probe.query_one(under_test, &[]).await.unwrap().get(0);
+        assert_eq!(leaked, 0, "torn-down pool leaked {leaked} backend(s)");
+        mgr2.disconnect("probe").unwrap();
     }
 }

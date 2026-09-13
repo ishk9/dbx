@@ -1,0 +1,97 @@
+/* Design tokens — the single source of truth for dbx's visual language.
+   Warm paper light surface, one confident deep-blue accent (a refined nod to
+   Postgres elephant-blue), humanist-grotesk UI type + mono for data.
+   Calm and trustworthy, minimal chrome. */
+
+@import "@fontsource-variable/hanken-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+  /* Type */
+  --font-ui: "Hanken Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", monospace;
+
+  /* Warm-neutral surfaces */
+  --paper: #f7f5f2;
+  --surface: #ffffff;
+  --surface-sunken: #f0ede8;
+  --border: #e4e0d9;
+  --border-strong: #d3cec5;
+
+  /* Ink */
+  --ink: #1c1a17;
+  --ink-muted: #6b6459;
+  --ink-faint: #9a9287;
+
+  /* Accent — deep elephant blue */
+  --accent: #2f5d8a;
+  --accent-hover: #274d73;
+  --accent-soft: #e8eff5;
+  --accent-ink: #ffffff;
+
+  /* State colors */
+  --ok: #2f7d55;
+  --ok-soft: #e6f2ea;
+  --warn: #a86a1f;
+  --warn-soft: #f8efdf;
+  --danger: #b23b34;
+  --danger-soft: #f8e8e6;
+
+  /* Spacing scale (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Radius */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* Elevation — soft, sparingly used */
+  --shadow-sm: 0 1px 2px rgba(28, 26, 23, 0.06);
+  --shadow-md: 0 6px 20px rgba(28, 26, 23, 0.1);
+
+  /* Motion */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur: 220ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Every interactive element gets a visible focus ring (a11y floor). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

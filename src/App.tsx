@@ -1,50 +1,69 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect, useState } from "react";
+import { api } from "./lib/api";
+import { useConnections } from "./store/connections";
+import { Sidebar } from "./connection/Sidebar";
+import { ConnectWizard } from "./connection/ConnectWizard";
+import { StatusBanner } from "./connection/StatusBanner";
+import type { ConnState } from "./lib/types";
+import "./styles/tokens.css";
+import "./styles/app.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { saved, states, activeId, loadSaved, applyStatus, connectSaved } =
+    useConnections();
+  // When true, show the wizard even if a connection is active (the "+ New" flow).
+  const [showWizard, setShowWizard] = useState(false);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  // Load saved connections and subscribe to backend status pushes once.
+  useEffect(() => {
+    loadSaved();
+    const unlisten = api.onStatus((e) => {
+      const state: ConnState =
+        e.state === "failed"
+          ? { state: "failed", detail: e.detail ?? "" }
+          : { state: e.state };
+      applyStatus(e.id, state);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [loadSaved, applyStatus]);
+
+  // Once a connection becomes active, leave the "+ New" wizard view.
+  useEffect(() => {
+    if (activeId) setShowWizard(false);
+  }, [activeId]);
+
+  const active = activeId ? saved.find((c) => c.id === activeId) : undefined;
+  const activeState = activeId ? states[activeId] : undefined;
+
+  const wizardVisible = showWizard || !activeId;
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="app">
+      <Sidebar onNew={() => setShowWizard(true)} />
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      <main className="main">
+        {wizardVisible ? (
+          <div className="center">
+            <ConnectWizard />
+          </div>
+        ) : (
+          <>
+            {active && activeState && (
+              <StatusBanner
+                name={active.name || active.dbname}
+                state={activeState}
+                onRetry={() => connectSaved(active.id)}
+              />
+            )}
+            <div className="workspace-empty">
+              Schema browser & query tools land here next.
+            </div>
+          </>
+        )}
+      </main>
+    </div>
   );
 }
 

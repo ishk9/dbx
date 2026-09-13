@@ -1,0 +1,269 @@
+/* App shell + Phase-3 surfaces. Uses tokens from tokens.css. */
+
+.app {
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  height: 100%;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  background: var(--surface-sunken);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4);
+  gap: var(--sp-4);
+}
+
+.wordmark {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) 0;
+}
+.wordmark b {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.wordmark span {
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+}
+
+.side-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  padding: 0 var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+.conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.conn-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  transition: background var(--dur) var(--ease);
+}
+.conn-item:hover {
+  background: var(--border);
+}
+.conn-item[aria-current="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.conn-item .conn-name {
+  font-weight: 550;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conn-item .conn-sub {
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+}
+
+/* status dot */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ink-faint);
+}
+.dot.connected { background: var(--ok); }
+.dot.connecting,
+.dot.reconnecting { background: var(--warn); animation: pulse 1.2s var(--ease) infinite; }
+.dot.failed { background: var(--danger); }
+.dot.disconnected { background: var(--border-strong); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+.btn-ghost:hover { background: var(--surface); }
+.btn-block { width: 100%; }
+
+/* ---------- Main workspace ---------- */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ---------- Status banner ---------- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  animation: banner-in var(--dur) var(--ease);
+}
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.banner.connected { background: var(--ok-soft); color: var(--ok); }
+.banner.reconnecting,
+.banner.connecting { background: var(--warn-soft); color: var(--warn); }
+.banner.failed { background: var(--danger-soft); color: var(--danger); }
+.banner.disconnected { background: var(--surface-sunken); color: var(--ink-muted); }
+.banner .banner-msg { flex: 1; }
+.banner .btn { padding: var(--sp-1) var(--sp-3); font-size: 12px; }
+
+/* ---------- Empty / welcome + wizard ---------- */
+.center {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-7);
+  overflow-y: auto;
+}
+
+.wizard {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--sp-6);
+  animation: banner-in var(--dur) var(--ease);
+}
+.wizard h1 {
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--sp-1);
+}
+.wizard .lede {
+  color: var(--ink-muted);
+  margin: 0 0 var(--sp-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-4);
+}
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.field input,
+.field select {
+  font: inherit;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color var(--dur) var(--ease);
+}
+.field input:focus,
+.field select:focus { border-color: var(--accent); outline: none; }
+.field.mono input { font-family: var(--font-mono); }
+
+.row-2 { display: grid; grid-template-columns: 1fr 96px; gap: var(--sp-3); }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+  color: var(--ink-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.wizard-actions {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.wizard-actions .btn { flex: 1; }
+
+.quick-links {
+  display: flex;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+}
+.link:hover { text-decoration: underline; }
+
+.msg { font-size: 13px; margin: 0 0 var(--sp-4); padding: var(--sp-3); border-radius: var(--r-md); }
+.msg.ok { background: var(--ok-soft); color: var(--ok); }
+.msg.err { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- Workspace placeholder (pre Phase 4) ---------- */
+.workspace-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
