@@ -1,0 +1,51 @@
+[package]
+name = "dbx"
+version = "0.1.0"
+description = "A beginner-friendly, native Postgres desktop client"
+authors = ["Ishaan"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "dbx_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime + Postgres driver + pool (the connection-lifecycle core).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-chrono-0_4"] }
+deadpool-postgres = "0.14"
+# rustls TLS so we don't depend on a system OpenSSL for `sslmode=require`.
+tokio-postgres-rustls = "0.13"
+rustls = "0.23"
+# Types the PG adapter maps to serde_json.
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1", features = ["db-postgres"] }
+uuid = { version = "1", features = ["serde"] }
+# Secrets in the OS keychain — never plaintext.
+keyring = { version = "3", features = ["apple-native"] }
+thiserror = "2"
+
+[dev-dependencies]
+# Ephemeral Postgres for the state-machine self-check (Phase 2).
+# ponytail: dockerless in-process PG for tests; if flaky in CI, swap to a docker fixture.
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
