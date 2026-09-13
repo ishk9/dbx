@@ -2,12 +2,15 @@
 //! and the store, then emit `conn://status` so the UI's inline banner tracks the
 //! real backend state. No business logic lives here (Command pattern).
 
+use deadpool_postgres::Client;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::connection::{self, ConnConfig, ConnState, ConnectionManager};
 use crate::error::{AppError, Result};
+use crate::pg::repo::{self, Column, DbObject, QueryResult, Schema, TablePage};
 use crate::store;
+use serde_json::Value;
 
 /// Payload for the `conn://status` event: connection id + flattened state.
 #[derive(Serialize, Clone)]
@@ -103,4 +106,125 @@ pub fn delete_connection(
 #[tauri::command]
 pub fn connection_state(mgr: State<'_, ConnectionManager>, id: String) -> Option<ConnState> {
     mgr.state(&id)
+}
+
+// --- schema browser ---
+
+/// Acquire a pooled client and emit the resulting connection state, so a
+/// reconnect or failure that happened while getting the client shows up in the
+/// banner instead of manifesting as an unexplained error.
+/// ponytail: emits the *resolved* state; streaming the transient "reconnecting"
+/// mid-acquire needs a status channel from the core — add if users want it.
+async fn client_with_status(
+    app: &AppHandle,
+    mgr: &ConnectionManager,
+    id: &str,
+) -> Result<Client> {
+    let result = mgr.client(id).await;
+    if let Some(state) = mgr.state(id) {
+        emit_status(app, id, &state);
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn list_schemas(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+) -> Result<Vec<Schema>> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::list_schemas(&client).await
+}
+
+#[tauri::command]
+pub async fn list_objects(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    schema: String,
+) -> Result<Vec<DbObject>> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::list_objects(&client, &schema).await
+}
+
+#[tauri::command]
+pub async fn list_columns(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    schema: String,
+    table: String,
+) -> Result<Vec<Column>> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::list_columns(&client, &schema, &table).await
+}
+
+// --- table data + grid CRUD (no SQL required) ---
+
+#[tauri::command]
+pub async fn table_rows(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    schema: String,
+    table: String,
+    limit: i64,
+    offset: i64,
+) -> Result<TablePage> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::table_rows(&client, &schema, &table, limit, offset).await
+}
+
+#[tauri::command]
+pub async fn insert_row(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    schema: String,
+    table: String,
+    values: Value,
+) -> Result<Value> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::insert_row(&client, &schema, &table, &values).await
+}
+
+#[tauri::command]
+pub async fn update_row(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    schema: String,
+    table: String,
+    pk: Value,
+    changes: Value,
+) -> Result<u64> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::update_row(&client, &schema, &table, &pk, &changes).await
+}
+
+#[tauri::command]
+pub async fn delete_row(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    schema: String,
+    table: String,
+    pk: Value,
+) -> Result<u64> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::delete_row(&client, &schema, &table, &pk).await
+}
+
+// --- ad-hoc SQL query tool ---
+
+#[tauri::command]
+pub async fn run_query(
+    app: AppHandle,
+    mgr: State<'_, ConnectionManager>,
+    id: String,
+    sql: String,
+) -> Result<QueryResult> {
+    let client = client_with_status(&app, &mgr, &id).await?;
+    repo::run_query(&client, &sql).await
 }

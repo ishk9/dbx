@@ -1,6 +1,7 @@
 mod commands;
 mod connection;
 mod error;
+mod pg;
 mod store;
 
 use connection::ConnectionManager;
@@ -19,6 +20,14 @@ pub fn run() {
             commands::list_connections,
             commands::delete_connection,
             commands::connection_state,
+            commands::list_schemas,
+            commands::list_objects,
+            commands::list_columns,
+            commands::table_rows,
+            commands::insert_row,
+            commands::update_row,
+            commands::delete_row,
+            commands::run_query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
