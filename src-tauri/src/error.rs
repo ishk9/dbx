@@ -13,8 +13,8 @@ pub enum AppError {
     #[error("no such connection: {0}")]
     UnknownConnection(String),
 
-    #[error("database error: {0}")]
-    Db(#[from] tokio_postgres::Error),
+    #[error("{0}")]
+    Db(String),
 
     #[error("connection pool error: {0}")]
     Pool(String),
@@ -24,6 +24,26 @@ pub enum AppError {
 
     #[error("{0}")]
     Other(String),
+}
+
+// tokio_postgres::Error's own Display is generic ("db error: ..."). The real
+// Postgres message (syntax error, undefined column, SQLSTATE, hint) lives in the
+// attached DbError — pull it out so the query tool shows what actually failed.
+impl From<tokio_postgres::Error> for AppError {
+    fn from(e: tokio_postgres::Error) -> Self {
+        let Some(db) = e.as_db_error() else {
+            // Not a SQL error (protocol/IO) — its Display is the best we have.
+            return AppError::Db(e.to_string());
+        };
+        let mut msg = format!("ERROR [{}]: {}", db.code().code(), db.message());
+        if let Some(detail) = db.detail() {
+            msg.push_str(&format!("\nDETAIL: {detail}"));
+        }
+        if let Some(hint) = db.hint() {
+            msg.push_str(&format!("\nHINT: {hint}"));
+        }
+        AppError::Db(msg)
+    }
 }
 
 // deadpool's PoolError isn't `#[from]`-friendly across its generic, so map it here.

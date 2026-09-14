@@ -205,6 +205,8 @@
 .field input,
 .field select {
   font: inherit;
+  width: 100%;
+  min-width: 0; /* let inputs shrink inside grid tracks instead of overflowing */
   padding: var(--sp-3);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -218,6 +220,10 @@
 
 .row-2 { display: grid; grid-template-columns: 1fr 96px; gap: var(--sp-3); }
 .row-3 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+/* Grid items default to min-width:auto, which lets a wide input push the track
+   past the card edge. Zero it so both columns stay inside. */
+.row-2 > .field,
+.row-3 > .field { min-width: 0; }
 
 .check {
   display: flex;
@@ -566,3 +572,59 @@
   font-size: 13px;
 }
 .q-empty { flex: 1; display: grid; place-items: center; color: var(--ink-faint); font-size: 13px; }
+
+/* ---------- Cell detail modal ---------- */
+.g-cell { cursor: pointer; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(28, 26, 23, 0.35);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5);
+  animation: banner-in var(--dur) var(--ease);
+}
+.modal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+.modal-text {
+  border: none;
+  resize: vertical;
+  min-height: 200px;
+  max-height: 60vh;
+  padding: var(--sp-4) var(--sp-5);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--surface);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.modal-text:focus { outline: none; }
+.modal-text[readonly] { background: var(--surface-sunken); color: var(--ink-muted); }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+}

@@ -164,7 +164,7 @@ function Grid({
   onDelete: (rowIndex: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [editing, setEditing] = useState<{ row: number; col: string } | null>(null);
+  const [viewing, setViewing] = useState<{ row: number; col: string } | null>(null);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -173,12 +173,17 @@ function Grid({
     overscan: 12,
   });
 
-  // Grid columns: an actions gutter (if mutable) + one per column.
-  const template = `${canMutate ? "40px " : ""}${columns.map(() => "minmax(140px, 1fr)").join(" ")}`;
+  // Grid columns: an actions gutter (if mutable) + one per column. Fixed-ish
+  // widths (grow to fill when there's room) plus an explicit min-width on the
+  // header/body let wide tables overflow horizontally so grid-wrap can scroll.
+  const GUT = 40;
+  const COL_W = 200;
+  const template = `${canMutate ? `${GUT}px ` : ""}${columns.map(() => `minmax(${COL_W}px, 1fr)`).join(" ")}`;
+  const minWidth = (canMutate ? GUT : 0) + columns.length * COL_W;
 
   return (
     <div className="grid-wrap" ref={scrollRef}>
-      <div className="grid-header" style={{ gridTemplateColumns: template }}>
+      <div className="grid-header" style={{ gridTemplateColumns: template, minWidth }}>
         {canMutate && <div className="gh-cell gutter" />}
         {columns.map((c) => (
           <div key={c.name} className="gh-cell" title={c.dataType}>
@@ -189,7 +194,7 @@ function Grid({
         ))}
       </div>
 
-      <div className="grid-body" style={{ height: virtualizer.getTotalSize() }}>
+      <div className="grid-body" style={{ height: virtualizer.getTotalSize(), minWidth }}>
         {virtualizer.getVirtualItems().map((vi) => {
           const row = rows[vi.index];
           return (
@@ -211,39 +216,100 @@ function Grid({
                 </button>
               )}
               {columns.map((c) => {
-                const isEditing = editing?.row === vi.index && editing?.col === c.name;
                 const value = row[c.name];
                 return (
                   <div
                     key={c.name}
                     className={`g-cell ${isNull(value) ? "null" : ""}`}
-                    onDoubleClick={() => canMutate && setEditing({ row: vi.index, col: c.name })}
+                    title="Click to view"
+                    onClick={() => setViewing({ row: vi.index, col: c.name })}
                   >
-                    {isEditing ? (
-                      <input
-                        className="g-edit"
-                        autoFocus
-                        defaultValue={renderCell(value)}
-                        onBlur={(e) => {
-                          onCommit(vi.index, c, e.target.value);
-                          setEditing(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                          if (e.key === "Escape") setEditing(null);
-                        }}
-                      />
-                    ) : isNull(value) ? (
-                      <span className="null-tag">NULL</span>
-                    ) : (
-                      renderCell(value)
-                    )}
+                    {isNull(value) ? <span className="null-tag">NULL</span> : renderCell(value)}
                   </div>
                 );
               })}
             </div>
           );
         })}
+      </div>
+
+      {viewing &&
+        (() => {
+          const col = columns.find((c) => c.name === viewing.col);
+          if (!col) return null;
+          return (
+            <CellModal
+              col={col}
+              value={rows[viewing.row]?.[col.name]}
+              canMutate={canMutate}
+              onClose={() => setViewing(null)}
+              onSave={(v) => {
+                onCommit(viewing.row, col, v);
+                setViewing(null);
+              }}
+            />
+          );
+        })()}
+    </div>
+  );
+}
+
+// Full-value viewer/editor for a single cell. Solves two things the inline grid
+// can't: reading a value too wide to fit, and editing multi-line values (jsonb,
+// arrays, long text) that a one-line input mangled.
+function CellModal({
+  col,
+  value,
+  canMutate,
+  onClose,
+  onSave,
+}: {
+  col: Column;
+  value: unknown;
+  canMutate: boolean;
+  onClose: () => void;
+  onSave: (value: string) => void;
+}) {
+  const [text, setText] = useState(() => (isNull(value) ? "" : renderCell(value)));
+  const [copied, setCopied] = useState(false);
+  const dirty = text !== (isNull(value) ? "" : renderCell(value));
+
+  return (
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <div className="tv-title">
+            <b>{col.name}</b>
+            <span className="gh-type">{col.dataType}</span>
+          </div>
+          <button className="g-del" title="Close" onClick={onClose}>
+            ✕
+          </button>
+        </header>
+        <textarea
+          className="modal-text"
+          autoFocus
+          spellCheck={false}
+          readOnly={!canMutate}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="modal-actions">
+          <button
+            className="btn btn-ghost sm"
+            onClick={() => {
+              navigator.clipboard.writeText(text);
+              setCopied(true);
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+          {canMutate && (
+            <button className="btn btn-primary sm" disabled={!dirty} onClick={() => onSave(text)}>
+              Save
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
